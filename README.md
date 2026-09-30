@@ -36,6 +36,19 @@ Lid Awake ships two front-ends for the same flag:
 
 ## Install
 
+### Homebrew
+
+```sh
+brew install --cask palcacer-42/tap/lid-awake
+```
+
+Homebrew will ask you to trust the third-party tap the first time. The app is
+not notarized, so on first launch use **right-click → Open** (or
+`xattr -dr com.apple.quarantine "/Applications/Lid Awake.app"`). You still need
+the one-time sudoers rule below (Homebrew prints it as a caveat).
+
+### From source
+
 ```sh
 git clone https://github.com/palcacer-42/lid-awake.git
 cd lid-awake
