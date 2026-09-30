@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Actions
 
     @objc func toggleClicked() {
-        setSleepDisabled(!sleepDisabled())
+        if !setSleepDisabled(!sleepDisabled()) { showSudoersHelp(); return }
         refresh()
     }
 
@@ -229,8 +229,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh()
     }
 
+    /// Shown when the toggle fails, almost always because the passwordless
+    /// sudoers rule is missing.
+    func showSudoersHelp() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Couldn't change the setting"
+        alert.informativeText = """
+        Lid Awake needs a one-time passwordless sudo rule to change the \
+        power-management setting. Run this in Terminal, then try again:
+
+        printf '%s\\n' "$(whoami) ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1" \
+          | sudo tee /etc/sudoers.d/lid-toggle >/dev/null
+        sudo chmod 440 /etc/sudoers.d/lid-toggle
+        """
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     @objc func menuToggle() {
-        setSleepDisabled(!sleepDisabled())
+        if !setSleepDisabled(!sleepDisabled()) { showSudoersHelp(); return }
         refresh()
     }
 }

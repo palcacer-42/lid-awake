@@ -1,14 +1,17 @@
 #!/bin/zsh
-# Build "Lid Awake.app" from main.swift into ./dist (and optionally install it).
+# Build "Lid Awake.app" from main.swift.
 #
 #   ./build.sh              build to ./dist/Lid Awake.app
 #   ./build.sh --install    build and copy to ~/Applications
 #
-# Requires Xcode Command Line Tools (swiftc). Check: xcode-select -p
+# Produces a universal (arm64 + x86_64) binary when possible; falls back to a
+# native-only build. Requires Xcode Command Line Tools (check: xcode-select -p)
 set -e
 HERE="${0:A:h}"
 DIST="$HERE/dist"
 APP="$DIST/Lid Awake.app"
+VERSION="1.0.0"
+MIN_MACOS="13.0"
 
 if ! command -v swiftc >/dev/null 2>&1; then
   echo "error: swiftc not found. Install Xcode Command Line Tools:" >&2
@@ -19,13 +22,24 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-swiftc -O -o "$tmp/LidAwake" "$HERE/main.swift" -framework AppKit
+build_universal() {
+  swiftc -O -target "arm64-apple-macosx$MIN_MACOS"   -o "$tmp/arm64"  "$HERE/main.swift" -framework AppKit 2>/dev/null || return 1
+  swiftc -O -target "x86_64-apple-macosx$MIN_MACOS"  -o "$tmp/x86_64" "$HERE/main.swift" -framework AppKit 2>/dev/null || return 1
+  lipo -create "$tmp/arm64" "$tmp/x86_64" -output "$tmp/LidAwake" || return 1
+}
+
+if build_universal; then
+  echo "built universal binary (arm64 + x86_64)"
+else
+  echo "universal build unavailable, building native only"
+  swiftc -O -o "$tmp/LidAwake" "$HERE/main.swift" -framework AppKit
+fi
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$tmp/LidAwake" "$APP/Contents/MacOS/LidAwake"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -35,9 +49,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key><string>com.lidawake.app</string>
   <key>CFBundleExecutable</key><string>LidAwake</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleVersion</key><string>2.0</string>
-  <key>CFBundleShortVersionString</key><string>2.0</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>LSMinimumSystemVersion</key><string>$MIN_MACOS</string>
   <key>LSUIElement</key><false/>
   <key>NSHighResolutionCapable</key><true/>
 </dict>

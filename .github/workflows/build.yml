@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal app
+        run: ./build.sh
+
+      - name: Verify architectures
+        run: lipo -info "dist/Lid Awake.app/Contents/MacOS/LidAwake"
+
+      - name: Zip app
+        run: |
+          cd dist
+          asset="Lid-Awake-${GITHUB_REF_NAME}.zip"
+          zip -qry "$asset" "Lid Awake.app"
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+          shasum -a 256 "$asset"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lid-Awake
+          path: dist/*.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" "dist/${ASSET}" \
+            --title "Lid Awake ${GITHUB_REF_NAME}" \
+            --generate-notes
