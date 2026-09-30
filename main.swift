@@ -1,0 +1,242 @@
+import AppKit
+
+// MARK: - pmset helpers
+
+func run(_ path: String, _ args: [String]) -> String {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: path)
+    p.arguments = args
+    let pipe = Pipe()
+    p.standardOutput = pipe
+    p.standardError = pipe
+    do { try p.run() } catch { return "" }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit()
+    return String(data: data, encoding: .utf8) ?? ""
+}
+
+/// The lid-closed-awake state is exposed by `pmset -g` as `SleepDisabled`.
+/// NOTE: the setting name used to *write* it is `disablesleep`, but the key
+/// printed by `pmset -g` is `SleepDisabled` (one word, capitalised).
+func sleepDisabled() -> Bool {
+    for line in run("/usr/bin/pmset", ["-g"]).split(separator: "\n") {
+        let parts = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+        if parts.count >= 2, parts[0].lowercased() == "sleepdisabled" {
+            return parts[1] == "1"
+        }
+    }
+    return false
+}
+
+@discardableResult
+func setSleepDisabled(_ on: Bool) -> Bool {
+    _ = run("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "-a", "disablesleep", on ? "1" : "0"])
+    return sleepDisabled() == on
+}
+
+// MARK: - Login item (LaunchAgent)
+
+let bundleID = "com.lidawake.app"
+let launchAgentLabel = "com.lidawake.login"
+var launchAgentPath: String {
+    NSHomeDirectory() + "/Library/LaunchAgents/\(launchAgentLabel).plist"
+}
+
+func loginItemEnabled() -> Bool {
+    FileManager.default.fileExists(atPath: launchAgentPath)
+}
+
+func setLoginItem(_ on: Bool) {
+    let fm = FileManager.default
+    if on {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>Label</key><string>\(launchAgentLabel)</string>
+          <key>ProgramArguments</key>
+          <array><string>\(Bundle.main.executablePath ?? "")</string></array>
+          <key>RunAtLoad</key><true/>
+          <key>ProcessType</key><string>Interactive</string>
+        </dict>
+        </plist>
+        """
+        try? plist.write(toFile: launchAgentPath, atomically: true, encoding: .utf8)
+        _ = run("/bin/launchctl", ["bootstrap", "gui/\(getuid())", launchAgentPath])
+    } else {
+        _ = run("/bin/launchctl", ["bootout", "gui/\(getuid())", launchAgentPath])
+        try? fm.removeItem(atPath: launchAgentPath)
+    }
+}
+
+// MARK: - App
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    var window: NSWindow!
+    var statusLabel: NSTextField!
+    var detailLabel: NSTextField!
+    var toggleButton: NSButton!
+    var loginCheckbox: NSButton!
+    var item: NSStatusItem!
+
+    func applicationDidFinishLaunching(_ note: Notification) {
+        if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 1 {
+            NSApp.terminate(nil)
+            return
+        }
+        buildMenu()
+        buildWindow()
+        buildStatusItem()
+        refresh()
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { window.makeKeyAndOrderFront(nil) }
+        return true
+    }
+
+    // MARK: UI
+
+    func buildMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Lid Awake",
+                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                        keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Lid Awake", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit Lid Awake", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        NSApp.mainMenu = mainMenu
+    }
+
+    func buildWindow() {
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 230),
+                          styleMask: [.titled, .closable, .miniaturizable],
+                          backing: .buffered, defer: false)
+        window.title = "Lid Awake"
+        window.isReleasedWhenClosed = false
+
+        let content = NSView(frame: window.contentView!.bounds)
+        content.autoresizingMask = [.width, .height]
+
+        statusLabel = NSTextField(labelWithString: "")
+        statusLabel.font = NSFont.systemFont(ofSize: 22, weight: .semibold)
+        statusLabel.alignment = .center
+
+        detailLabel = NSTextField(wrappingLabelWithString: "")
+        detailLabel.alignment = .center
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.font = NSFont.systemFont(ofSize: 12)
+
+        toggleButton = NSButton(title: "", target: self, action: #selector(toggleClicked))
+        toggleButton.bezelStyle = .rounded
+        toggleButton.controlSize = .large
+        toggleButton.keyEquivalent = "\r"
+
+        loginCheckbox = NSButton(checkboxWithTitle: "Launch at Login", target: self, action: #selector(loginToggled))
+
+        let stack = NSStackView(views: [statusLabel, detailLabel, toggleButton, loginCheckbox])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 14
+        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: content.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        ])
+        window.contentView = content
+    }
+
+    func buildStatusItem() {
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.target = self
+        item.button?.action = #selector(statusClicked)
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    func refresh() {
+        let on = sleepDisabled()
+        if on {
+            statusLabel.stringValue = "Lid closed: Mac stays awake"
+            detailLabel.stringValue = "The Mac keeps running when you shut the lid (no external display needed)."
+            toggleButton.title = "Turn OFF  (sleep on lid close)"
+        } else {
+            statusLabel.stringValue = "Normal: sleeps on lid close"
+            detailLabel.stringValue = "Shutting the lid will put the Mac to sleep, as usual."
+            toggleButton.title = "Turn ON  (stay awake with lid shut)"
+        }
+        loginCheckbox.state = loginItemEnabled() ? .on : .off
+
+        let sym = on ? "eye.fill" : "moon.fill"
+        let img = NSImage(systemSymbolName: sym, accessibilityDescription: on ? "Awake" : "Sleep")
+        img?.isTemplate = true
+        item.button?.image = img
+        item.button?.title = on ? " Awake" : " Sleep"
+        item.button?.toolTip = on
+            ? "Lid Awake: ON — click to show window"
+            : "Lid Awake: OFF — click to show window"
+    }
+
+    // MARK: Actions
+
+    @objc func toggleClicked() {
+        setSleepDisabled(!sleepDisabled())
+        refresh()
+    }
+
+    @objc func loginToggled() {
+        setLoginItem(loginCheckbox.state == .on)
+        refresh()
+    }
+
+    @objc func statusClicked() {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            let menu = NSMenu()
+            let t = NSMenuItem(title: sleepDisabled() ? "Disable lid-awake" : "Enable lid-awake",
+                               action: #selector(menuToggle), keyEquivalent: "")
+            t.target = self
+            menu.addItem(t)
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Show Window", action: #selector(showWindow), keyEquivalent: "").target = self
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            item.menu = menu
+            item.button?.performClick(nil)
+            item.menu = nil
+        } else {
+            showWindow()
+        }
+    }
+
+    @objc func showWindow() {
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        refresh()
+    }
+
+    @objc func menuToggle() {
+        setSleepDisabled(!sleepDisabled())
+        refresh()
+    }
+}
+
+let app = NSApplication.shared
+app.setActivationPolicy(.regular)
+let delegate = AppDelegate()
+app.delegate = delegate
+app.run()

@@ -1,0 +1,47 @@
+#!/bin/zsh
+# lid-toggle — allow/disallow keeping the Mac awake with the lid closed
+# (clamshell mode without an external display).
+#
+# Usage:
+#   lid-toggle            # toggle
+#   lid-toggle on         # force on
+#   lid-toggle off        # force off
+#   lid-toggle status     # print current state
+#
+# Requires a NOPASSWD sudoers rule for:
+#   /usr/bin/pmset -a disablesleep 0
+#   /usr/bin/pmset -a disablesleep 1
+# (install.sh sets this up.)
+
+set -u
+PMSET=/usr/bin/pmset
+
+# NOTE: the key printed by `pmset -g` is `SleepDisabled` (one word, capitalised),
+# even though the setting you write is called `disablesleep`.
+current() {
+  $PMSET -g | awk 'tolower($1)=="sleepdisabled" {print $2; found=1} END {if (!found) print 0}'
+}
+
+set_state() {
+  if ! sudo -n $PMSET -a disablesleep "$1" 2>/dev/null; then
+    echo "lid-toggle: passwordless sudo not configured for pmset." >&2
+    echo "Run install.sh, or: sudo $PMSET -a disablesleep $1" >&2
+    exit 1
+  fi
+}
+
+case "${1:-toggle}" in
+  on)      set_state 1 ;;
+  off)     set_state 0 ;;
+  status)  ;;
+  toggle)
+    if [[ "$(current)" == "1" ]]; then set_state 0; else set_state 1; fi
+    ;;
+  *) echo "usage: lid-toggle [on|off|status|toggle]" >&2; exit 2 ;;
+esac
+
+if [[ "$(current)" == "1" ]]; then
+  echo "Lid-closed awake: ON  (Mac stays running with lid shut)"
+else
+  echo "Lid-closed awake: OFF (normal sleep on lid close)"
+fi

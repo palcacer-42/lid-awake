@@ -1,0 +1,6 @@
+# Build output
+dist/
+*.app
+
+# macOS
+.DS_Store
