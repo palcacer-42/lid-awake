@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func buildWindow() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 230),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 250),
                           styleMask: [.titled, .closable, .miniaturizable],
                           backing: .buffered, defer: false)
         window.title = "Lid Awake"
@@ -138,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.font = NSFont.systemFont(ofSize: 12)
 
+        let hintLabel = NSTextField(wrappingLabelWithString: "Lid Awake lives in your menu bar — click the cup icon for quick options.")
+        hintLabel.alignment = .center
+        hintLabel.textColor = .tertiaryLabelColor
+        hintLabel.font = NSFont.systemFont(ofSize: 11)
+
         toggleButton = NSButton(title: "", target: self, action: #selector(toggleClicked))
         toggleButton.bezelStyle = .rounded
         toggleButton.controlSize = .large
@@ -145,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         loginCheckbox = NSButton(checkboxWithTitle: "Launch at Login", target: self, action: #selector(loginToggled))
 
-        let stack = NSStackView(views: [statusLabel, detailLabel, toggleButton, loginCheckbox])
+        let stack = NSStackView(views: [statusLabel, detailLabel, toggleButton, loginCheckbox, hintLabel])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 14
@@ -164,9 +169,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func buildStatusItem() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.target = self
-        item.button?.action = #selector(statusClicked)
-        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        item.button?.imagePosition = .imageOnly
+    }
+
+    /// Rebuilds the menu-bar menu (Caffeine-style): a status header, a toggle,
+    /// launch-at-login, and About/Quit. Called whenever the state changes.
+    func refreshMenu() {
+        let on = sleepDisabled()
+        let menu = NSMenu()
+
+        let header = NSMenuItem(title: on ? "Lid Awake is active" : "Lid Awake is inactive",
+                                action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+
+        let toggle = NSMenuItem(title: on ? "Disable lid-awake" : "Enable lid-awake",
+                                action: #selector(menuToggle), keyEquivalent: "")
+        toggle.target = self
+        menu.addItem(toggle)
+
+        menu.addItem(.separator())
+
+        let login = NSMenuItem(title: "Launch at Login",
+                               action: #selector(menuLoginToggle), keyEquivalent: "")
+        login.target = self
+        login.state = loginItemEnabled() ? .on : .off
+        menu.addItem(login)
+
+        menu.addItem(.separator())
+
+        let show = NSMenuItem(title: "Show Window", action: #selector(showWindow), keyEquivalent: "")
+        show.target = self
+        menu.addItem(show)
+
+        let about = NSMenuItem(title: "About Lid Awake",
+                               action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                               keyEquivalent: "")
+        about.target = NSApp
+        menu.addItem(about)
+
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Lid Awake", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        item.menu = menu
     }
 
     func refresh() {
@@ -182,14 +227,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         loginCheckbox.state = loginItemEnabled() ? .on : .off
 
-        let sym = on ? "eye.fill" : "moon.fill"
-        let img = NSImage(systemSymbolName: sym, accessibilityDescription: on ? "Awake" : "Sleep")
+        // Caffeine-style two-state menu-bar icon: filled cup = active,
+        // hollow cup = inactive. Icon-only (no text), like Caffeine.
+        let sym = on ? "cup.and.saucer.fill" : "cup.and.saucer"
+        let img = NSImage(systemSymbolName: sym, accessibilityDescription: on ? "Lid Awake active" : "Lid Awake inactive")
         img?.isTemplate = true
         item.button?.image = img
-        item.button?.title = on ? " Awake" : " Sleep"
+        item.button?.title = ""
         item.button?.toolTip = on
-            ? "Lid Awake: ON — click to show window"
-            : "Lid Awake: OFF — click to show window"
+            ? "Lid Awake: active — click for options"
+            : "Lid Awake: inactive — click for options"
+
+        refreshMenu()
     }
 
     // MARK: Actions
@@ -204,23 +253,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh()
     }
 
-    @objc func statusClicked() {
-        if NSApp.currentEvent?.type == .rightMouseUp {
-            let menu = NSMenu()
-            let t = NSMenuItem(title: sleepDisabled() ? "Disable lid-awake" : "Enable lid-awake",
-                               action: #selector(menuToggle), keyEquivalent: "")
-            t.target = self
-            menu.addItem(t)
-            menu.addItem(.separator())
-            menu.addItem(withTitle: "Show Window", action: #selector(showWindow), keyEquivalent: "").target = self
-            menu.addItem(.separator())
-            menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-            item.menu = menu
-            item.button?.performClick(nil)
-            item.menu = nil
-        } else {
-            showWindow()
-        }
+    @objc func menuLoginToggle() {
+        setLoginItem(!loginItemEnabled())
+        refresh()
     }
 
     @objc func showWindow() {

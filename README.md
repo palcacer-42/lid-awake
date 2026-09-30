@@ -63,23 +63,26 @@ cd lid-awake
 3. Build and install `~/Applications/Lid Awake.app`.
 
 Then open **Lid Awake** from `~/Applications` (or Spotlight) and click the
-button. The menu-bar icon shows the state at a glance: 👁 Awake / 🌙 Sleep.
+button. The app also lives in the menu bar, Caffeine-style: a filled cup icon
+means lid-awake is active, a hollow cup means it is inactive. Click the icon
+for a menu with the toggle, Launch at Login, and About/Quit.
 
 ### Manual / build only
 
 ```sh
-./build.sh              # build ./dist/Lid Awake.app
+./build.sh              # build ./dist/Lid Awake.app (generates the icon too)
 ./build.sh --install    # build and copy to ~/Applications
+./make-icon.sh          # regenerate AppIcon.icns on its own
 ```
 
 ## Usage
 
 | Action | How |
 | --- | --- |
-| Toggle | App window button, or menu-bar icon (left-click), or `lid-toggle` |
-| Show window | Click the menu-bar icon |
-| Menu | Right-click the menu-bar icon |
-| Launch at login | Checkbox in the app window |
+| Toggle | Menu-bar icon → Enable/Disable, app window button, or `lid-toggle` |
+| Menu | Click the menu-bar cup icon (filled = active, hollow = inactive) |
+| Launch at login | "Launch at Login" in the menu-bar menu, or the app window checkbox |
+| Show window | Menu-bar icon → Show Window |
 | From a script | `lid-toggle on` / `lid-toggle off` / `lid-toggle status` |
 
 ## Caveats

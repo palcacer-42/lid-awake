@@ -2,5 +2,8 @@
 dist/
 *.app
 
+# Generated app icon (rebuilt by make-icon.sh / build.sh)
+AppIcon.icns
+
 # macOS
 .DS_Store
