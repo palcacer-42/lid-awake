@@ -25,8 +25,8 @@ key you *write* is `disablesleep`, but the key you *read* is `SleepDisabled`).
 
 Lid Awake ships two front-ends for the same flag:
 
-- **Lid Awake.app** — a small Swift/AppKit app: a window with a big toggle
-  button, a Dock icon, and a menu-bar item.
+- **Lid Awake.app** — a small Swift/AppKit **menu-bar** app (no Dock icon):
+  click the icon to toggle, right-click for the menu.
 - **`lid-toggle`** — a shell CLI for scripting (`lid-toggle on|off|status|toggle`).
 
 ## Requirements
@@ -62,10 +62,11 @@ cd lid-awake
    (it will ask for your password **once**, to write the rule).
 3. Build and install `~/Applications/Lid Awake.app`.
 
-Then open **Lid Awake** from `~/Applications` (or Spotlight) and click the
-button. The app also lives in the menu bar, Caffeine-style: a filled cup icon
-means lid-awake is active, a hollow cup means it is inactive. Click the icon
-for a menu with the toggle, Launch at Login, and About/Quit.
+Then open **Lid Awake** from `~/Applications` (or Spotlight). It lives entirely
+in the menu bar: a filled cup icon means lid-awake is active, a hollow cup means
+it is inactive. **Left-click the icon to toggle** it on/off instantly — no menu
+pops up. **Right-click** the icon for the menu (status, Launch at Login, window,
+About/Quit).
 
 ### Manual / build only
 
@@ -79,10 +80,11 @@ for a menu with the toggle, Launch at Login, and About/Quit.
 
 | Action | How |
 | --- | --- |
-| Toggle | Menu-bar icon → Enable/Disable, app window button, or `lid-toggle` |
-| Menu | Click the menu-bar cup icon (filled = active, hollow = inactive) |
-| Launch at login | "Launch at Login" in the menu-bar menu, or the app window checkbox |
-| Show window | Menu-bar icon → Show Window |
+| Toggle | **Left-click** the menu-bar cup icon, or `lid-toggle` |
+| Menu | **Right-click** the menu-bar cup icon |
+| Turn screen off only | Right-click → "Turn Screen Off", or `lid-toggle screenoff` |
+| Launch at login | Right-click → "Launch at Login" |
+| Show window | Right-click → "Show Window" |
 | From a script | `lid-toggle on` / `lid-toggle off` / `lid-toggle status` |
 
 ## Caveats

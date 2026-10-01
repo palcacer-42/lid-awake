@@ -10,7 +10,7 @@ set -e
 HERE="${0:A:h}"
 DIST="$HERE/dist"
 APP="$DIST/Lid Awake.app"
-VERSION="2.0.0"
+VERSION="2.1.0"
 MIN_MACOS="13.0"
 
 if ! command -v swiftc >/dev/null 2>&1; then
@@ -63,7 +63,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>$MIN_MACOS</string>
-  <key>LSUIElement</key><false/>
+  <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>

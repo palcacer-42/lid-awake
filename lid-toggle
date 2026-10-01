@@ -7,6 +7,7 @@
 #   lid-toggle on         # force on
 #   lid-toggle off        # force off
 #   lid-toggle status     # print current state
+#   lid-toggle screenoff  # turn the display off only (Mac keeps running)
 #
 # Requires a NOPASSWD sudoers rule for:
 #   /usr/bin/pmset -a disablesleep 0
@@ -34,10 +35,15 @@ case "${1:-toggle}" in
   on)      set_state 1 ;;
   off)     set_state 0 ;;
   status)  ;;
+  screenoff)
+    $PMSET displaysleepnow
+    echo "Display off — any key or mouse input wakes it."
+    exit 0
+    ;;
   toggle)
     if [[ "$(current)" == "1" ]]; then set_state 0; else set_state 1; fi
     ;;
-  *) echo "usage: lid-toggle [on|off|status|toggle]" >&2; exit 2 ;;
+  *) echo "usage: lid-toggle [on|off|status|screenoff|toggle]" >&2; exit 2 ;;
 esac
 
 if [[ "$(current)" == "1" ]]; then

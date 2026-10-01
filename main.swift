@@ -79,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var toggleButton: NSButton!
     var loginCheckbox: NSButton!
     var item: NSStatusItem!
+    var statusMenu: NSMenu!
 
     func applicationDidFinishLaunching(_ note: Notification) {
         if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 1 {
@@ -89,9 +90,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildWindow()
         buildStatusItem()
         refresh()
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -169,7 +167,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func buildStatusItem() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.imagePosition = .imageOnly
+        if let button = item.button {
+            button.imagePosition = .imageOnly
+            button.target = self
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
     }
 
     /// Rebuilds the menu-bar menu (Caffeine-style): a status header, a toggle,
@@ -187,6 +190,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 action: #selector(menuToggle), keyEquivalent: "")
         toggle.target = self
         menu.addItem(toggle)
+
+        let screenOff = NSMenuItem(title: "Turn Screen Off",
+                                   action: #selector(turnScreenOff), keyEquivalent: "")
+        screenOff.target = self
+        menu.addItem(screenOff)
 
         menu.addItem(.separator())
 
@@ -211,7 +219,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Lid Awake", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
-        item.menu = menu
+        // Don't attach the menu to the button: a primary (left) click toggles
+        // the state directly, and the menu is only shown on a secondary
+        // (right) click.
+        statusMenu = menu
+        item.menu = nil
     }
 
     func refresh() {
@@ -235,17 +247,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.image = img
         item.button?.title = ""
         item.button?.toolTip = on
-            ? "Lid Awake: active — click for options"
-            : "Lid Awake: inactive — click for options"
+            ? "Lid Awake: active — click to turn off, right-click for menu"
+            : "Lid Awake: inactive — click to turn on, right-click for menu"
 
         refreshMenu()
     }
 
     // MARK: Actions
 
-    @objc func toggleClicked() {
+    /// Primary (left) click toggles the setting without opening a menu;
+    /// secondary (right) click opens the menu.
+    @objc func statusItemClicked(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            item.menu = statusMenu
+            item.button?.performClick(nil)
+            item.menu = nil
+        } else {
+            toggleNow()
+        }
+    }
+
+    func toggleNow() {
         if !setSleepDisabled(!sleepDisabled()) { showSudoersHelp(); return }
         refresh()
+    }
+
+    @objc func toggleClicked() {
+        toggleNow()
     }
 
     @objc func loginToggled() {
@@ -283,13 +311,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func menuToggle() {
-        if !setSleepDisabled(!sleepDisabled()) { showSudoersHelp(); return }
-        refresh()
+        toggleNow()
+    }
+
+    /// Blank the display immediately without sleeping the Mac. No sudo needed
+    /// on recent macOS; the screen wakes on any mouse/keyboard input.
+    @objc func turnScreenOff() {
+        _ = run("/usr/bin/pmset", ["displaysleepnow"])
     }
 }
 
 let app = NSApplication.shared
-app.setActivationPolicy(.regular)
+app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
