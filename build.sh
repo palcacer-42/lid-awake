@@ -10,7 +10,7 @@ set -e
 HERE="${0:A:h}"
 DIST="$HERE/dist"
 APP="$DIST/Lid Awake.app"
-VERSION="2.1.0"
+VERSION="2.2.0"
 MIN_MACOS="13.0"
 
 if ! command -v swiftc >/dev/null 2>&1; then
@@ -23,8 +23,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 build_universal() {
-  swiftc -O -target "arm64-apple-macosx$MIN_MACOS"   -o "$tmp/arm64"  "$HERE/main.swift" -framework AppKit 2>/dev/null || return 1
-  swiftc -O -target "x86_64-apple-macosx$MIN_MACOS"  -o "$tmp/x86_64" "$HERE/main.swift" -framework AppKit 2>/dev/null || return 1
+  swiftc -O -target "arm64-apple-macosx$MIN_MACOS"   -o "$tmp/arm64"  "$HERE/main.swift" -framework AppKit -framework IOKit 2>/dev/null || return 1
+  swiftc -O -target "x86_64-apple-macosx$MIN_MACOS"  -o "$tmp/x86_64" "$HERE/main.swift" -framework AppKit -framework IOKit 2>/dev/null || return 1
   lipo -create "$tmp/arm64" "$tmp/x86_64" -output "$tmp/LidAwake" || return 1
 }
 
@@ -32,7 +32,7 @@ if build_universal; then
   echo "built universal binary (arm64 + x86_64)"
 else
   echo "universal build unavailable, building native only"
-  swiftc -O -o "$tmp/LidAwake" "$HERE/main.swift" -framework AppKit
+  swiftc -O -o "$tmp/LidAwake" "$HERE/main.swift" -framework AppKit -framework IOKit
 fi
 
 rm -rf "$APP"

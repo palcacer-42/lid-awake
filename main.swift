@@ -1,4 +1,5 @@
 import AppKit
+import IOKit
 
 // MARK: - pmset helpers
 
@@ -32,6 +33,100 @@ func sleepDisabled() -> Bool {
 func setSleepDisabled(_ on: Bool) -> Bool {
     _ = run("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "-a", "disablesleep", on ? "1" : "0"])
     return sleepDisabled() == on
+}
+
+// MARK: - Clamshell (lid-close) monitor
+
+/// Watches the IOPMrootDomain for lid-close events via IOKit interest
+/// notifications.  When the lid physically closes while lid-awake is active,
+/// the internal display is blanked automatically with `pmset displaysleepnow`
+/// — the same mechanism macOS uses in clamshell mode with an external display.
+///
+/// **Why this is needed:**  `disablesleep 1` is a brute-force flag that
+/// prevents the *entire* sleep process, including the normal clamshell
+/// transition that would turn off the internal panel.  Without an external
+/// display to "hand off" to, macOS simply keeps the backlight on behind the
+/// closed lid.  This monitor bridges that gap.
+final class ClamshellMonitor {
+    private var notifyPort: IONotificationPortRef?
+    private var notifier: io_object_t = 0
+    private let pmRootDomain: io_service_t
+
+    init?() {
+        let service = IOServiceGetMatchingService(
+            kIOMainPortDefault,
+            IOServiceMatching("IOPMrootDomain")
+        )
+        guard service != 0 else { return nil }
+        pmRootDomain = service
+    }
+
+    deinit {
+        stop()
+        IOObjectRelease(pmRootDomain)
+    }
+
+    /// Returns `true` when the lid is physically closed (Hall-effect sensor).
+    func isLidClosed() -> Bool {
+        guard let prop = IORegistryEntryCreateCFProperty(
+            pmRootDomain,
+            "AppleClamshellState" as CFString,
+            kCFAllocatorDefault, 0
+        )?.takeRetainedValue() as? Bool else {
+            return false
+        }
+        return prop
+    }
+
+    /// Begin watching for lid-state changes on the current run loop.
+    func start() {
+        guard notifyPort == nil else { return }
+        notifyPort = IONotificationPortCreate(kIOMainPortDefault)
+        guard let port = notifyPort else { return }
+
+        let cfSource = IONotificationPortGetRunLoopSource(port).takeUnretainedValue()
+        CFRunLoopAddSource(CFRunLoopGetMain(), cfSource, .defaultMode)
+
+        // The C callback receives `refcon` (pointer to self) plus the
+        // service and messageType.  We only care about general-interest
+        // notifications which include clamshell state transitions.
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        IOServiceAddInterestNotification(
+            port,
+            pmRootDomain,
+            kIOGeneralInterest,
+            { (refcon, _, _, _) in
+                guard let refcon else { return }
+                let monitor = Unmanaged<ClamshellMonitor>
+                    .fromOpaque(refcon).takeUnretainedValue()
+                monitor.handleChange()
+            },
+            selfPtr,
+            &notifier
+        )
+    }
+
+    func stop() {
+        if notifier != 0 {
+            IOObjectRelease(notifier)
+            notifier = 0
+        }
+        if let port = notifyPort {
+            IONotificationPortDestroy(port)
+            notifyPort = nil
+        }
+    }
+
+    /// Called on every IOPMrootDomain general-interest notification.
+    /// If lid-awake is active and the lid just closed, blank the display
+    /// so the backlight doesn't stay on behind the closed lid.
+    private func handleChange() {
+        guard sleepDisabled(), isLidClosed() else { return }
+        // Small delay lets the lid sensor settle before blanking.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            _ = run("/usr/bin/pmset", ["displaysleepnow"])
+        }
+    }
 }
 
 // MARK: - Login item (LaunchAgent)
@@ -80,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var loginCheckbox: NSButton!
     var item: NSStatusItem!
     var statusMenu: NSMenu!
+    var clamshellMonitor: ClamshellMonitor?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 1 {
@@ -90,6 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildWindow()
         buildStatusItem()
         refresh()
+
+        // Start monitoring the lid sensor so we can blank the display
+        // automatically when the lid closes while lid-awake is active.
+        clamshellMonitor = ClamshellMonitor()
+        clamshellMonitor?.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

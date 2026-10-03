@@ -29,6 +29,12 @@ Lid Awake ships two front-ends for the same flag:
   click the icon to toggle, right-click for the menu.
 - **`lid-toggle`** — a shell CLI for scripting (`lid-toggle on|off|status|toggle`).
 
+### Automatic screen sleep on lid close
+
+When `disablesleep` is active, macOS prevents the entire sleep sequence when the lid closes. Without an external display attached, macOS normally leaves the internal display backlight powered on behind the closed lid.
+
+**Lid Awake.app** includes an IOKit clamshell monitor (`AppleClamshellState` on `IOPMrootDomain`). As soon as the physical lid closes while lid-awake is enabled, it automatically triggers `pmset displaysleepnow` to blank the internal screen, matching native clamshell mode behavior without requiring an external monitor or dummy plug. When you open the lid or tap a key, standard wake events resume the display immediately.
+
 ## Requirements
 
 - macOS 13 (Ventura) or newer — Apple Silicon or Intel.
