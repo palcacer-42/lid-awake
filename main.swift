@@ -200,6 +200,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// When the app quits, always restore normal sleep-on-lid-close behaviour.
+    /// The `disablesleep` pmset flag persists across app quit and reboots, so
+    /// without this cleanup a user who enables lid-awake, quits the app, and
+    /// then closes the lid will find the Mac stays awake (and gets hot) with
+    /// no way to turn it off short of Terminal.
+    func applicationWillTerminate(_ notification: Notification) {
+        if sleepDisabled() {
+            _ = setSleepDisabled(false)
+        }
+    }
+
     // MARK: UI
 
     func buildMenu() {

@@ -10,7 +10,7 @@ set -e
 HERE="${0:A:h}"
 DIST="$HERE/dist"
 APP="$DIST/Lid Awake.app"
-VERSION="2.2.0"
+VERSION="2.2.1"
 MIN_MACOS="13.0"
 
 if ! command -v swiftc >/dev/null 2>&1; then
